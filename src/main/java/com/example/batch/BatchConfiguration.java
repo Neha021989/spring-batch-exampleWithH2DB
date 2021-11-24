@@ -44,19 +44,44 @@ public class BatchConfiguration {
 	}
 
 	@Bean
+	public ItemReader<Person> referralReader(DataSource dataSource) {
+		return new JdbcCursorItemReaderBuilder<Person>().name("cursorItemReader").dataSource(dataSource)
+				.sql("select id, first_name, last_name from person where last_name='CHAUDHARY'").dataSource(dataSource)
+				.rowMapper(new BeanPropertyRowMapper<>(Person.class)).build();
+	}
+
+	@Bean
+	public JdbcBatchItemWriter<Person> referralWriter(DataSource dataSource) {
+		return new JdbcBatchItemWriterBuilder<Person>()
+				.itemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<>())
+				.sql("Update person set last_name=:lastName where id =:id").dataSource(dataSource).build();
+	}
+
+	@Bean
 	public PersonItemProcessor processor() {
 		return new PersonItemProcessor();
 	}
 
 	@Bean
-	public Job importUserJob(JobCompletionNotificationListener listener, Step step1) {
-		return jobBuilderFactory.get("importUserJob").incrementer(new RunIdIncrementer()).listener(listener).flow(step1)
-				.end().build();
+	public ReferralItemProcessor referralProcessor() {
+		return new ReferralItemProcessor();
+	}
+
+	@Bean
+	public Job importUserJob(JobCompletionNotificationListener listener, Step step1, Step step2) {
+		return jobBuilderFactory.get("importUserJob").incrementer(new RunIdIncrementer()).start(step1).next(step2)
+				.listener(listener).build();
 	}
 
 	@Bean
 	public Step step1(JdbcBatchItemWriter<Person> writer, ItemReader<Person> reader) {
 		return stepBuilderFactory.get("step1").<Person, Person>chunk(1).reader(reader).processor(processor())
 				.writer(writer).build();
+	}
+
+	@Bean
+	public Step step2(JdbcBatchItemWriter<Person> referralWriter, ItemReader<Person> referralReader) {
+		return stepBuilderFactory.get("step2").<Person, Person>chunk(1).reader(referralReader)
+				.processor(referralProcessor()).writer(referralWriter).build();
 	}
 }
